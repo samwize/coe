@@ -17,7 +17,7 @@ def crawl():
 
     # Write to file
     local_time = gmt8tz.localize(datetime.now())
-    file = open('./html/' +local_time.strftime(fmt) + '.html', "w+")
+    file = open('./html/' + local_time.strftime(fmt) + '.html', "w+")
     file.write(data)
     file.close()
     
