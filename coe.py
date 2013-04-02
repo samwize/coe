@@ -43,11 +43,11 @@ def crawl():
     data = response.read()
     # print data
 
-    # Write to file
-    local_time = gmt8tz.localize(datetime.now())
-    file = open('./html/' + local_time.strftime(fmt) + '.html', "w+")
-    file.write(data)
-    file.close()
+    # Write to file - We don't do that anymore
+    # local_time = gmt8tz.localize(datetime.now())
+    # file = open('./html/' + local_time.strftime(fmt) + '.html', "w+")
+    # file.write(data)
+    # file.close()
 
     # Write to json  
     with open("./data/database.json", "a") as myfile:
@@ -240,15 +240,14 @@ def insert_json_to_db():
     with open('./data/database.json') as f:
         for json_str in f:
             j = json.loads(json_str)
-            # TODO
-            # if j['status'] == 'running':
-            #     # status = running
-            #     # Add a bid
-            # else:
-            #     # status = ended
-            #     # Add a round
-            #     r
-            #     round.insert()
+            if j['status'] == 'running':
+                # status = running
+                # Add a Bid
+                bids.insert(j)
+            else:
+                # status = ended
+                # Add a Round
+                rounds.insert(j)
         
 
 while True:
