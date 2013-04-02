@@ -16,14 +16,17 @@ This model a bidding round eg. March 2013 2nd Round
 Properties:
 
 - name
+- status = running | ended
 - end_on
-- qp
-- pqp
-- quota
-- bids_received
-- bids_successful
-- bids_unsuccessful
-- bids_unused
+- cat_a/b/c/d/e
+	- cat
+	- qp
+	- pqp
+	- quota
+	- bids_received
+	- bids_successful
+	- bids_unsuccessful
+	- bids_unused
 
 
 
@@ -33,8 +36,11 @@ This model an instance of a running bid at a specific time.
 
 Properties:
 
-- round
+- round_id
 - bid_on
-- category
+- cat
 - price
-- bid
+- bids
+
+
+
