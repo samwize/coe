@@ -10,6 +10,20 @@ import json
 import os
 from pymongo import MongoClient
 
+
+##################################################################
+# Setup
+
+# Try to open the env file in dotcloud
+# If cannot open, we assume development env
+try:
+    f = open(os.path.expanduser('~/environment.json'))
+    env = json.load(f)
+except Exception, e:
+    # Local
+    env = dict()
+    env['DOTCLOUD_DB_MONGODB_URL'] = 'localhost'
+
 # For local
 FILE_DATABASE = "./data/database.json"
 DIR_HTML  = './data/html/'
@@ -29,10 +43,15 @@ this_round_regex = re.compile('(.*?) Open Bidding Exercise has ended on (.*?) hr
 DEBUG = False
 
 # Setup MongoDB
-client = MongoClient()
+client = MongoClient(env['DOTCLOUD_DB_MONGODB_URL'])
 db = client.coe
 rounds = db.rounds
 bids = db.bids
+
+COE_URL = 'http://www.onemotoring.com.sg/1m/coe/coeDetail.html'
+##################################################################
+
+
 
 
 
@@ -41,26 +60,34 @@ bids = db.bids
 # Return the html (as string)
 def crawl():
     print '.'
-    req = urllib2.Request('http://www.onemotoring.com.sg/1m/coe/coeDetail.html')
+    req = urllib2.Request(COE_URL)
     response = urllib2.urlopen(req)
     data = response.read()
-    # print data
+    
+    if DEBUG:
+        print data
 
-    # Write to file - We don't do that anymore
+    # Insert to db
+    json_dict = parse(data)
+    # Use this 1-liner encoder (http://stackoverflow.com/a/2680060/242682)
+    dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
+    s = json.dumps(json_dict, default=dthandler)
+    insert_json_to_db(s)
+
+    # Write to file - We don't do this anymore
     # local_time = gmt8tz.localize(datetime.now())
     # file = open(DIR_HTML + local_time.strftime(fmt) + '.html', "w+")
     # file.write(data)
     # file.close()
 
-
-    # Write to json  
-    with open(FILE_DATABASE, "a") as myfile:
-        json_dict = parse(data)
-        # Use this 1-liner encoder (http://stackoverflow.com/a/2680060/242682)
-        dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
-        s = json.dumps(json_dict, default=dthandler)
-        if s is not None and s != 'null':
-            myfile.write(s + "\n")
+    # Write json to a text file - We don't do this anymore
+    # with open(FILE_DATABASE, "a") as myfile:
+    #     json_dict = parse(data)
+    #     # Use this 1-liner encoder (http://stackoverflow.com/a/2680060/242682)
+    #     dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
+    #     s = json.dumps(json_dict, default=dthandler)
+    #     if s is not None and s != 'null':
+    #         myfile.write(s + "\n")
 
     return data
 
@@ -230,7 +257,7 @@ def parse_all_html_to_json():
             print '>> ' + str(i) + ' :' + f
             json_dict = parse(open('./html/' + f).read())
             # Write to json  
-            with open(FILE_DATABASE = "./data/database.json", "a") as myfile:
+            with open(FILE_DATABASE, "a") as myfile:
                 # Use this 1-liner encoder (http://stackoverflow.com/a/2680060/242682)
                 dthandler = lambda obj: obj.isoformat() if isinstance(obj, datetime) else None
                 s = json.dumps(json_dict, default=dthandler)
@@ -239,52 +266,73 @@ def parse_all_html_to_json():
 
 
 # Read ./data/database.json and add to mongo db
-def insert_json_to_db():
+def insert_initial_data_to_db():
     with open(FILE_DATABASE) as f:
         for json_str in f:
-            j = json.loads(json_str)
-            if j['status'] == 'running':
-                # status = running
-                # Add a Bid
-                # Find the round first
-                the_round = rounds.find_one({'end_on': j['end_on']})
-                if the_round is None:
-                    the_round_id = rounds.insert({"status": "running", 'end_on': j['end_on']})
-                else:
-                    the_round_id = the_round['_id']
-                
-                # Insert the bid
-                for cat in ['a', 'b', 'c', 'd', 'e']:
-                    data = j['cat_' + cat]
-                    data['cat'] = cat
-                    data['bid_on'] = j['bid_on']
-                    data['round_id'] = the_round_id
-                    key = {'bid_on': j['bid_on'], 'cat': cat}
-                    bids.update(key, data, upsert = True)
-                
-            else:
-                # status = ended
-                # Add a Round
-                key = {'end_on': j['end_on']}
-                cat_a = j['cat_a']
-                cat_a['cat'] = 'a'
-                cat_b = j['cat_b']
-                cat_b['cat'] = 'b'
-                cat_c = j['cat_c']
-                cat_c['cat'] = 'c'
-                cat_d = j['cat_d']
-                cat_d['cat'] = 'd'
-                cat_e = j['cat_e']
-                cat_e['cat'] = 'e'
-                data = {"status": "ended", "name": j['name'], "cat_a": cat_a, "cat_b": cat_b, "cat_c": cat_c, "cat_d": cat_d, "cat_e": cat_e, 'end_on': j['end_on']}
-                # print data
-                rounds.update(key, data, upsert = True)
+            insert_json_to_db(json_str)
+
+
+# Insert a single json_str to mongo db
+def insert_json_to_db(json_str):
+    j = json.loads(json_str)
+    if j['status'] == 'running':
+        # status = running
+        # Add a Bid
+        # Find the round first
+        the_round = rounds.find_one({'end_on': j['end_on']})
+        if the_round is None:
+            the_round_id = rounds.insert({"status": "running", 'end_on': j['end_on']})
+        else:
+            the_round_id = the_round['_id']
+        
+        # Insert the bid
+        for cat in ['a', 'b', 'c', 'd', 'e']:
+            data = j['cat_' + cat]
+            data['cat'] = cat
+            data['bid_on'] = j['bid_on']
+            data['round_id'] = the_round_id
+            key = {'bid_on': j['bid_on'], 'cat': cat}
+            bids.update(key, data, upsert = True)
+        
+    else:
+        # status = ended
+        # Add a Round
+        key = {'end_on': j['end_on']}
+        cat_a = j['cat_a']
+        cat_a['cat'] = 'a'
+        cat_b = j['cat_b']
+        cat_b['cat'] = 'b'
+        cat_c = j['cat_c']
+        cat_c['cat'] = 'c'
+        cat_d = j['cat_d']
+        cat_d['cat'] = 'd'
+        cat_e = j['cat_e']
+        cat_e['cat'] = 'e'
+        data = {"status": "ended", "name": j['name'], "cat_a": cat_a, "cat_b": cat_b, "cat_c": cat_c, "cat_d": cat_d, "cat_e": cat_e, 'end_on': j['end_on']}
+        # print data
+        rounds.update(key, data, upsert = True)
+
         
 
-while True:
+
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == '-d':
+        # Daemon mode
+        # Crawl every minute
+        while True:
+            crawl()
+            sleep(60)
+    else:
+        # Crawl once
+        crawl()
+    
+
+# TESTING
+# while True:
     # Crawl every minute
-    crawl()
-    sleep(60)
+    # crawl()
+    # sleep(60)
 
     # TESTING
     # Bidding Running
@@ -292,7 +340,7 @@ while True:
     # Bidding Ended
     # parse(open('./html/2013-04-01 1627.html').read())
     # parse_all_html_to_json()
-    # insert_json_to_db()
+    # insert_initial_data_to_db()
     # sleep(12000)
 
     
